@@ -88,19 +88,21 @@ class Chord:
 		self.chordAttributes = []
 
 	def setRootNote (self, note):
-		notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-
-		if note in notes:
-			self.rootNote = notes.index (note)
+		if note in self.notes:
+			self.rootNote = self.notes.index (note)
 		else:
 			raise TypeError('note must be a note')
 
 	def getRootNote (self):
-		notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-		return notes [self.rootNote]
+		return self.notes [self.rootNote]
 
 	def setRoot (self):		# useless function
 		self.chordField |= 0b100000000000000000000000
+		#                    R 2334 5 677R 9  1   1
+		#                       mM     mM     1   3
+
+	def setAdd12 (self):	# add root note to the octave
+		self.chordField |= 0b000000000000100000000000
 		#                    R 2334 5 677R 9  1   1
 		#                       mM     mM     1   3
 
@@ -191,7 +193,7 @@ class Chord:
 			return ('0' + attribute)
 		if attribute in ('sus2', 'sus4', '5'):
 			return ('1' + attribute)
-		if attribute in ('dim', 'b5', 'add9', 'add11', 'add13'):
+		if attribute in ('dim', 'b5', 'add9', 'add11', 'add12', 'add13'):
 			return ('2' + attribute)
 		return ''
 
@@ -240,6 +242,8 @@ class Chord:
 				self.setAdd9 ()
 			elif (attribute == 'add11'):
 				self.setAdd11 ()
+			elif (attribute == 'add12'):
+				self.setAdd12 ()
 			elif (attribute == 'add13'):
 				self.setAdd13 ()
 			else:
@@ -283,6 +287,49 @@ class Chord:
 			index += 1
 
 		return lst													# list of all chords to be played, in line with voicing
+
+
+# Bass Chord class inherits from Chord class
+class BassChord (Chord):
+
+	def getMidiList (self, voicing):
+		lst = []
+		startVoicing = voicing % 12
+		endVoicing = startVoicing + 11
+		
+		ch = self.chordField
+		ch = ch & 0b100000110000100000000000						# For bass chords, leave root, b5, 5 and octave (12th) only
+		index = 0
+		root = 0
+		
+		# go through chord and retrieve all the notes to be played; C=0, C#=1, etc
+		while ch > 0:
+			if ((ch & 0b100000000000000000000000) != 0):			# test MSB
+				elt = self.rootNote + index								# note to be played (C being 0)
+
+				# now, make sure the chord is in the voicing
+				if elt < startVoicing:
+					elt += 12
+				if elt > endVoicing:
+					elt -=12
+				if elt not in range (startVoicing, endVoicing):		# this should never happen, except for add9, add11 and add13
+					print ('Warning: index ' + str (index) + ' out of voicing range')
+					
+				elt = elt + voicing									# add to final voicing: this is the "note" in the midi message
+
+				if (elt > 127):										# final test to make sure we are within midi range²
+					elt -= 12
+				if (elt < 0):										# final test to make sure we are within midi range²
+					elt += 12
+
+				lst.append (elt)
+
+			ch = ch & 0b011111111111111111111111					# shift to next degree
+			ch = ch << 1
+			index += 1
+
+		return lst													# list of all chords to be played, in line with voicing
+
 
 
 # Novation Launchpad class
