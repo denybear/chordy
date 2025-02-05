@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2013 Ole Martin Bjorndalen <ombdalen@gmail.com>
+# SPDX-FileCopyrightText: 2025 Denybear
 #
 # SPDX-License-Identifier: MIT
 
@@ -18,15 +18,21 @@ class BBT:
 	
 	def clear (self):
 		self.bar = 0
-		self.beat = 0
+		self.beat = 0			# quarter note
+		self.eighth = 0			# eighth note
+		self.sixteenth = 0		# sixteenth note
+		self.tickFromBeat = -1
 		self.tick = -1
-		self.tickFromStartOfBar = -1
 		self.previousBar = -1
 		self.previousBeat = -1
+		self.previousEighth = -1
+		self.previousSixteenth = -1
+		self.previousTickFromBeat = -1
 		self.previousTick = -1
-		self.previousTickFromStartOfBar = -1
 		self.hasBarChanged = False
 		self.hasBeatChanged = False
+		self.hasEighthChanged = False
+		self.hasSixteenthChanged = False
 
 	def __init__(self):
 		self.clear ()
@@ -34,47 +40,71 @@ class BBT:
 	def save (self):
 		self.barSave = self.bar
 		self.beatSave = self.beat
-		self.tickSave = self.tick 
-		self.tickFromStartOfBarSave = self.tickFromStartOfBar
+		self.eighthSave = self.eighth
+		self.sixteenthSave = self.sixteenth
+		self.tickFromBeatSave = self.tickFromBeat 
+		self.tickSave = self.tick
 		self.previousBarSave = self.previousBar 
 		self.previousBeatSave = self.previousBeat 
-		self.previousTickSave = self.previousTick 
-		self.previousTickFromStartOfBarSave = self.previousTickFromStartOfBar
+		self.previousEighthSave = self.previousEighth
+		self.previousSixteenthSave = self.previousSixteenth
+		self.previousTickFromBeatSave = self.previousTickFromBeat 
+		self.previousTickSave = self.previousTick
 		self.hasBarChangedSave = self.hasBarChanged
 		self.hasBeatChangedSave = self.hasBeatChanged
+		self.hasEighthChangedSave = self.hasEighthChanged
+		self.hasSixteenthChangedSave = self.hasSixteenthChanged
 
 	def restore (self):
 		self.bar = self.barSave
 		self.beat = self.beatSave
+		self.eighth = self.eighthSave
+		self.sixteenth = self.sixteenthSave
+		self.tickFromBeat = self.tickFromBeatSave
 		self.tick = self.tickSave
-		self.tickFromStartOfBar = self.tickFromStartOfBarSave
 		self.previousBar = self.previousBarSave
 		self.previousBeat = self.previousBeatSave
+		self.previousEighth = self.previousEighthSave
+		self.previousSixteenth = self.previousSixteenthSave
+		self.previousTickFromBeat = self.previousTickFromBeatSave
 		self.previousTick = self.previousTickSave
-		self.previousTickFromStartOfBar = self.previousTickFromStartOfBarSave
 		self.hasBarChanged = self.hasBarChangedSave
 		self.hasBeatChanged = self.hasBeatChangedSave
+		self.hasEighthChanged = self.hasEighthChangedSave
+		self.hasSixteenthChanged = self.hasSixteenthChangedSave
 
 	def display (self):
-		print ('Bar:' + str (self.bar) + ' Beat:' + str (self.beat) + ' Tick: ' + str (self.tick) + ' Tick from bar start:' + str (self.tickFromStartOfBar))
+		print ('Bar:' + str (self.bar) + ' Beat:' + str (self.beat) + ' 8th:' + str (self.eighth) + ' 16th:' + str (self.sixteenth) + ' Tick: ' + str (self.tick) + ' TickFromBeat:' + str (self.tickFromBeat))
 
 	def increment (self):
 		self.hasBarChanged = False
 		self.hasBeatChanged = False
+		self.hasEighthChanged = False
+		self.hasSixteenthChanged = False
+		self.previousTickFromBeat = self.tickFromBeat
 		self.previousTick = self.tick
-		self.previousTickFromStartOfBar = self.tickFromStartOfBar
+		self.tickFromBeat +=1
 		self.tick +=1
-		self.tickFromStartOfBar +=1
-		if self.tick >= self.PPQN:
-			self.tick = 0
+		if self.tickFromBeat >= (self.PPQN / 4):
+			self.previousSixteenth = self.sixteenth
+			self.sixteenth += 1
+			self.hasSixteenthChanged = True
+		if self.tickFromBeat >= (self.PPQN / 2):
+			self.previousEighth = self.eighth
+			self.eighth += 1
+			self.hasEighthChanged = True
+		if self.tickFromBeat >= self.PPQN:
+			self.tickFromBeat = 0
 			self.previousBeat = self.beat
 			self.beat +=1
 			self.hasBeatChanged = True
 			if self.beat >= 4:
 				self.beat = 0
+				self.eighth = 0
+				self.sixteenth = 0		
+				self.tick = 0
 				self.previousBar = self.bar
 				self.bar += 1
-				self.tickFromStartOfBar = 0
 				self.hasBarChanged = True
 
 
@@ -331,7 +361,6 @@ class BassChord (Chord):
 		return lst													# list of all chords to be played, in line with voicing
 
 
-
 # Novation Launchpad class
 class NovationLaunchpad:
 	# name
@@ -424,8 +453,8 @@ class NovationLaunchpad:
 			lst.append (mido.Message ('note_on', note = val, velocity = self.padColor ['highAmber']))	# this is standard key
 		return lst
 
-		
-		
+
+	
 # inits
 bbt = BBT ()
 chord = Chord ()
@@ -573,9 +602,14 @@ play chord
 implement led on launchpad
 implement chord actions that are switchable on/off
 
+HERE
 
 implement rhythm library
 implement bass voicing
+
+implement pages of songs (including 1/2 bars)
+play from pages
+
 
 play with rythm
 implement pages of songs (including 1/2 bars)
