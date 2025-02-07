@@ -115,7 +115,8 @@ class Chord:
 	def __init__(self):
 		self.chordField = 0			# 24-bit field containing the notes that are part of the chord
 		self.rootNote = 0
-		self.chordAttributes = []
+		self.chordType = ''			# either dim, maj, min, sus (exclusively)
+		self.chordAttributes = []	# either 6, min7, maj7, 9 (can be combined)
 
 	def setRootNote (self, note):
 		if note in self.notes:
@@ -131,22 +132,27 @@ class Chord:
 		#                    R 2334 5 677R 9  1   1
 		#                       mM     mM     1   3
 
-	def setAdd12 (self):	# add root note to the octave
-		self.chordField |= 0b000000000000100000000000
+	def setDim (self):
+		self.chordField |= 0b100100100100000000000000
 		#                    R 2334 5 677R 9  1   1
 		#                       mM     mM     1   3
 
-	def setMajor (self):
-		self.chordField |= 0b100010010000000000000000
-		#                    R 2334 5 677R 9  1   1
-		#                       mM     mM     1   3
-
-	def setMinor (self):
+	def setMin (self):
 		self.chordField |= 0b100100010000000000000000
 		#                    R 2334 5 677R 9  1   1
 		#                       mM     mM     1   3
 
-	def set7 (self):
+	def setMaj (self):
+		self.chordField |= 0b100010010000000000000000
+		#                    R 2334 5 677R 9  1   1
+		#                       mM     mM     1   3
+
+	def setSus (self):		# sus4
+		self.chordField |= 0b100001010000000000000000
+		#                    R 2334 5 677R 9  1   1
+		#                       mM     mM     1   3
+
+	def setMin7 (self):
 		self.chordField |= 0b000000000010000000000000
 		#                    R 2334 5 677R 9  1   1
 		#                       mM     mM     1   3
@@ -180,19 +186,16 @@ class Chord:
 		#                    R 2334 5 677R 9  1   1
 		#                       mM     mM     1   3
 
-	def setDim (self):
-		self.chordField &= 0b100000000000111111111111
-		#                    R 2334 5 677R 9  1   1
-		#                       mM     mM     1   3
-		self.chordField |= 0b100100100100000000000000
-		#                    R 2334 5 677R 9  1   1
-		#                       mM     mM     1   3
-
 	def setB5 (self):
 		self.chordField &= 0b111111101111111111111111
 		#                    R 2334 5 677R 9  1   1
 		#                       mM     mM     1   3
 		self.chordField |= 0b000000100000000000000000
+		#                    R 2334 5 677R 9  1   1
+		#                       mM     mM     1   3
+
+	def setAdd6 (self):
+		self.chordField |= 0b000000000100000000000000
 		#                    R 2334 5 677R 9  1   1
 		#                       mM     mM     1   3
 
@@ -206,6 +209,11 @@ class Chord:
 		#                    R 2334 5 677R 9  1   1
 		#                       mM     mM     1   3
 
+	def setAdd12 (self):	# add root note to the octave
+		self.chordField |= 0b000000000000100000000000
+		#                    R 2334 5 677R 9  1   1
+		#                       mM     mM     1   3
+
 	def setAdd13 (self):
 		self.chordField |= 0b000000000000000000000100
 		#                    R 2334 5 677R 9  1   1
@@ -216,25 +224,41 @@ class Chord:
 		print ('Chord:' + format (self.chordField, '24b'))
 		print ('      R 2334 5 677R 9  1   1')
 		print ('         mM     mM     1   3')
+		print (self.chordType)
 		print (self.chordAttributes)
 
-	def rankAttribute (self, attribute):		# add additional char in front of attribute to ease the sorting
-		if attribute in ('maj', 'min', 'maj7', '7'):
-			return ('0' + attribute)
-		if attribute in ('sus2', 'sus4', '5'):
-			return ('1' + attribute)
-		if attribute in ('dim', 'b5', 'add9', 'add11', 'add12', 'add13'):
-			return ('2' + attribute)
-		return ''
 
-	def derankAttribute (self, attribute):	# remove additional sorting char in front of attribute
-		if attribute == '':
-			return ''
-		return attribute [1:]
+	def buildChordField (self):								# build chord field based on chord type and chord attributes
+		# rebuild chord field based on updated chord attributes
+		self.chordField = 0
 
-	def toChord (self, attribute):							# add or remove attribute of the chord to/from the list of the chord attributes
-		attribute = self.rankAttribute (attribute)			# add a sorting rank to the incoming attribute
-	
+		# check chord type
+		if (self.chordType == 'dim'):
+			self.setDim ()
+		elif (attribute == 'min'):
+			self.setMin ()
+		elif (attribute == 'maj'):
+			self.setMaj ()
+		elif (attribute == 'sus'):
+			self.setSus ()
+		else:
+			pass
+		
+		# check chord attributes
+		for attribute in self.chordAttributes:
+			if (attribute == 'maj7'):
+				self.setMaj7 ()
+			elif (attribute == 'min7'):
+				self.setMin7 ()
+			elif (attribute == 'add6'):
+				self.setAdd6 ()
+			elif (attribute == 'add9'):
+				self.setAdd9 ()
+			else:
+				pass
+
+
+	def attributeToChord (self, attribute):					# add or remove attribute of the chord to/from the list of the chord attributes
 		if attribute in self.chordAttributes:				# check whether we should add or remove chord attribute in the chord attributes list
 			self.chordAttributes.remove (attribute)			# removal from the list
 			addition = False
@@ -242,46 +266,18 @@ class Chord:
 			self.chordAttributes.append (attribute)			# addition to the list
 			addition = True
 	
-		self.chordAttributes.sort ()						# sort list to make sure attributes are always in the correct order; for ex. to make sure b5, dim etc is always managed properly
+		self.buildChordField ()
+		return addition										# return whether the attribute in parameter has been added or removed from the list
 
-		# rebuild chord field based on updated chord attributes
-		self.chordField = 0
-		
-		for attribute in self.chordAttributes:
-			attribute = self.derankAttribute (attribute)
 
-			if (attribute == 'maj'):
-				self.setMajor ()
-			elif (attribute == 'min'):
-				self.setMinor ()
-			elif (attribute == 'maj7'):
-				self.setMaj7 ()
-			elif (attribute == '7'):
-				self.set7 ()
-			elif (attribute == 'sus2'):
-				self.setSus2 ()
-			elif (attribute == 'sus4'):
-				self.setSus4 ()
-			elif (attribute == '5'):
-				self.set5 ()
-			elif (attribute == 'dim'):
-				self.setDim ()
-			elif (attribute == 'b5'):
-				self.setB5 ()
-			elif (attribute == 'add9'):
-				self.setAdd9 ()
-			elif (attribute == 'add11'):
-				self.setAdd11 ()
-			elif (attribute == 'add12'):
-				self.setAdd12 ()
-			elif (attribute == 'add13'):
-				self.setAdd13 ()
-			else:
-				pass
+	def typeToChord (self, typ):							# set type of the chord
+		previous = self.chordType
+		self.chordType = typ
+		self.buildChordField ()
+		return previous										# return previous chord type
 
-		return addition
 
-	def getMidiList (self, voicing):
+	def getMidiList (self, voicing):						# build a list of midi notes based on the chord to be played
 		lst = []
 		startVoicing = voicing % 12
 		endVoicing = startVoicing + 11
@@ -293,7 +289,7 @@ class Chord:
 		# go through chord and retrieve all the notes to be played; C=0, C#=1, etc
 		while ch > 0:
 			if ((ch & 0b100000000000000000000000) != 0):			# test MSB
-				elt = self.rootNote + index								# note to be played (C being 0)
+				elt = self.rootNote + index							# note to be played (C being 0)
 
 				# now, make sure the chord is in the voicing
 				if elt < startVoicing:
@@ -367,17 +363,17 @@ class NovationLaunchpad:
 	name ='Launchpad Mini'
 
 	# mapping from control pad
+	padType = {
+		0x00:'dim', 0x01:'min', 0x02:'maj', 0x03:'sus',
+	}
+
 	padAttribute = {
-		0x00:'maj', 0x01:'min', 0x02:'sus4',
-		0x10:'maj7', 0x11:'7', 0x12:'sus2',
-		0x20:'5', 0x21:'dim', 0x22:'b5',
-		0x30:'add9', 0x31:'add11', 0x32:'add13'
+		0x10:'add6', 0x11: 'min7', 0x12:'maj7', 0x13:'add9'
 	}
 
 	padRootNote = {
-		0x03:'A#', 0x04:'B',
-		0x13:'F', 0x14:'F#', 0x15:'G', 0x16:'G#', 0x17:'A',
-		0x23:'C', 0x24:'C#', 0x25:'D', 0x26:'D#', 0x27:'E'
+		0x21:'C#', 0x22:'D#', 0x24:'F#', 0x25:'G#', 0x26:'A#',
+		0x30:'C', 0x31:'D', 0x32:'E', 0x33:'F', 0x34:'G', 0x35:'A', 0x36:'B'
 	}
 
 	padAction = {
@@ -402,11 +398,18 @@ class NovationLaunchpad:
 		#lst.append (mido.Message.from_bytes([0xB0, 0x00, 0x00]))
 		return lst
 		
+	def clearType (self):
+		lst = []
+		keyList = list (self.padType.keys())
+		for key in keyList:
+			lst.append (mido.Message ('note_on', note = key, velocity = self.padColor ['highGreen']))
+		return lst
+
 	def clearAttribute (self):
 		lst = []
 		keyList = list (self.padAttribute.keys())
 		for key in keyList:
-			lst.append (mido.Message ('note_on', note = key, velocity = self.padColor ['highGreen']))
+			lst.append (mido.Message ('note_on', note = key, velocity = self.padColor ['lowGreen']))
 		return lst
 
 	def clearRootNote (self):
@@ -426,16 +429,28 @@ class NovationLaunchpad:
 			lst.append (mido.Message ('note_on', note = key, velocity = self.padColor ['highGreen']))
 		return lst
 
+	def liteType (self, value):
+		lst = []
+		val = self.getKeyByValue (self.padType, value)
+		lst.append (mido.Message ('note_on', note = val, velocity = self.padColor ['highRed']))
+		return lst
+
+	def unliteType (self, value):
+		lst = []
+		val = self.getKeyByValue (self.padType, value)
+		lst.append (mido.Message ('note_on', note = val, velocity = self.padColor ['highGreen']))
+		return lst
+
 	def liteAttribute (self, value):
 		lst = []
 		val = self.getKeyByValue (self.padAttribute, value)
-		lst.append (mido.Message ('note_on', note = val, velocity = self.padColor ['highRed']))
+		lst.append (mido.Message ('note_on', note = val, velocity = self.padColor ['lowRed']))
 		return lst
 
 	def unliteAttribute (self, value):
 		lst = []
 		val = self.getKeyByValue (self.padAttribute, value)
-		lst.append (mido.Message ('note_on', note = val, velocity = self.padColor ['highGreen']))
+		lst.append (mido.Message ('note_on', note = val, velocity = self.padColor ['lowGreen']))
 		return lst
 
 	def liteRootNote (self, value):
@@ -556,43 +571,60 @@ try:
 						multi_send (displayPorts, msg)
 					
 				except KeyError:
-					
-					# check if chord attribute
+
+					# check if chord type
 					try:
-						value = control.padAttribute [note]							# get chord attribute: maj, min, maj7, etc
-						lite = chord.toChord (value)								# add/remove the chord attribute to/from the list of attributes
-						if lite:
-							msgDisplayList = control.liteAttribute (value)			# chord attribute pad shall be lit
+						value = control.padType [note]								# get chord type: maj, min, dim, sus
+						lite = chord.typeToChord (value)							# change the chord type
+						if lite != value:
+							msgDisplayList = control.unliteType (lite)				# previous chord type pad shall be unlit
 							for msg in msgDisplayList:
 								multi_send (displayPorts, msg)
-						else:
-							msgDisplayList = control.unliteAttribute (value)		# chord attribute pad shall be unlit
+							msgDisplayList = control.liteType (value)				# new chord type pad shall be lit
 							for msg in msgDisplayList:
 								multi_send (displayPorts, msg)
 					except KeyError:
 					
-						# check if action
+						# check if chord attribute
 						try:
-							value = control.padAction [note]
-							if value == 'send':
-								msgOutList = chord.getMidiList (60)		# get all the midi commands to be sent to synthetizer (eg. reaper)
-								print (msgOutList)
-								for msg in msgOutList:
-									messageOut = mido.Message ('note_on', note = msg, velocity = 127)
-									print(f'Sending {messageOut}')
-									multi_send (outPorts, messageOut)
-							elif value == 'display':
-								chord.display ()
+							value = control.padAttribute [note]							# get chord attribute: min7, maj7, add9, etc
+							lite = chord.attributeToChord (value)						# add/remove the chord attribute to/from the list of attributes
+							if lite:
+								msgDisplayList = control.liteAttribute (value)			# chord attribute pad shall be lit
+								for msg in msgDisplayList:
+									multi_send (displayPorts, msg)
 							else:
-								pass
+								msgDisplayList = control.unliteAttribute (value)		# chord attribute pad shall be unlit
+								for msg in msgDisplayList:
+									multi_send (displayPorts, msg)
 						except KeyError:
-							pass
+					
+							# check if action
+							try:
+								value = control.padAction [note]
+								if value == 'send':
+									msgOutList = chord.getMidiList (60)		# get all the midi commands to be sent to synthetizer (eg. reaper)
+									print (msgOutList)
+									for msg in msgOutList:
+										messageOut = mido.Message ('note_on', note = msg, velocity = 127)
+										print(f'Sending {messageOut}')
+										multi_send (outPorts, messageOut)
+								elif value == 'display':
+									chord.display ()
+								else:
+									pass
+							except KeyError:
+								pass
 
 except KeyboardInterrupt:
 	pass
 
 
 """
+
+
+
+
 TO DO:
 assign midi numbers to actions, notes, etc
 (we can implement a "chord" class to build chord)
@@ -603,15 +635,14 @@ implement led on launchpad
 implement chord actions that are switchable on/off
 
 HERE
+4- pressing the same type a second time clears the type (single note mode again)
+1- press note sends chord (or note) to midi output
+2- ability to play a single note, not necessarily a chord
+3- do not play attribute if type is empty
+4b- no need to light the pads when press on-off
+4c- manage note-offs (stop sound)
 
+5- refactor bass chord class
 implement rhythm library
 implement bass voicing
-
-implement pages of songs (including 1/2 bars)
-play from pages
-
-
-play with rythm
-implement pages of songs (including 1/2 bars)
-play from pages
 """
