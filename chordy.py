@@ -121,13 +121,14 @@ class Chord:
 	def setRootNote (self, note):
 		if note in self.notes:
 			self.rootNote = self.notes.index (note)
+			self.setRoot ()
 		else:
 			raise TypeError('note must be a note')
 
 	def getRootNote (self):
 		return self.notes [self.rootNote]
 
-	def setRoot (self):		# useless function
+	def setRoot (self):
 		self.chordField |= 0b100000000000000000000000
 		#                    R 2334 5 677R 9  1   1
 		#                       mM     mM     1   3
@@ -235,14 +236,14 @@ class Chord:
 		# check chord type
 		if (self.chordType == 'dim'):
 			self.setDim ()
-		elif (attribute == 'min'):
+		elif (self.chordType == 'min'):
 			self.setMin ()
-		elif (attribute == 'maj'):
+		elif (self.chordType == 'maj'):
 			self.setMaj ()
-		elif (attribute == 'sus'):
+		elif (self.chordType == 'sus'):
 			self.setSus ()
 		else:
-			pass
+			return											# if no chord type is set, we forget about the attributes and leave
 		
 		# check chord attributes
 		for attribute in self.chordAttributes:
@@ -258,21 +259,24 @@ class Chord:
 				pass
 
 
-	def attributeToChord (self, attribute):					# add or remove attribute of the chord to/from the list of the chord attributes
-		if attribute in self.chordAttributes:				# check whether we should add or remove chord attribute in the chord attributes list
-			self.chordAttributes.remove (attribute)			# removal from the list
-			addition = False
-		else:
-			self.chordAttributes.append (attribute)			# addition to the list
-			addition = True
+	def attributeToChord (self, attribute, addition):		# add or remove attribute of the chord to/from the list of the chord attributes
+		if addition:										# add attribute
+			if attribute not in self.chordAttributes:		# make sure attribute is not in the list already
+				self.chordAttributes.append (attribute)		# addition to the list
+		else:												# remove attribute
+			if attribute in self.chordAttributes:			# make sure attribute is in the list
+				self.chordAttributes.remove (attribute)		# removal from the list
 	
 		self.buildChordField ()
-		return addition										# return whether the attribute in parameter has been added or removed from the list
 
 
-	def typeToChord (self, typ):							# set type of the chord
+	def typeToChord (self, typ, addition):					# set type of the chord
 		previous = self.chordType
-		self.chordType = typ
+		if addition:										# add type
+			self.chordType = typ
+		else:												# remove type
+			self.chordType = ''
+
 		self.buildChordField ()
 		return previous										# return previous chord type
 
@@ -377,7 +381,7 @@ class NovationLaunchpad:
 	}
 
 	padAction = {
-		0x08:'display', 0x18:'send'
+		0x08:'display'
 	}
 
 	# colors of çthe pads
@@ -513,10 +517,6 @@ for msg in msgDisplayList:
 msgDisplayList = control.clearRootNote ()
 for msg in msgDisplayList:
 	multi_send (displayPorts, msg)
-
-msgDisplayList = control.liteRootNote (chord.getRootNote ())	# lite root note
-for msg in msgDisplayList:
-	multi_send (displayPorts, msg)
 	
 msgDisplayList = control.clearAction ()
 for msg in msgDisplayList:
@@ -550,79 +550,79 @@ try:
 			if bbt.hasBarChanged:
 				bbt.display ()
 
-		if (messageIn.type in ('note_on')):						# note on events from keyboard; we don't care about note-off
-			if (messageIn.velocity != 0):
+		if (messageIn.type in ('note_on', 'note_off')):								# note on events from keyboard
+			noteOn = False
+			if (messageIn.type == 'note_on') and (messageIn.velocity != 0):
+				noteOn = True
 
-				print(f'Received {messageIn}')
-				note = messageIn.note
+			print(f'Received {messageIn}')
+			note = messageIn.note
 				
-				# check if note
-				try:
-					value = control.padRootNote [note]								# get note: C, C#, etc
-				
-					msgDisplayList = control.unliteRootNote (chord.getRootNote ())	# unlite previous root note
-					for msg in msgDisplayList:
-						multi_send (displayPorts, msg)
+			# check if root note
+			try:
+				value = control.padRootNote [note]								# get note: C, C#, etc		
 
+"""
+il faudrait une liste des notes actuellement on (en train d'être jouées)
+en resultat de getmidilist, on a les notes à jouer
+il faut faire note-off sur les notes de liste et qui ne sont pas dans getmidilist
+
+idem si on change de voicing
+idem si on change d'attribute
+idem si on change de type d'accord (si plus de type d'accord, on ne joue rien ou juste la root selon si la touche d'accord est jouée)
+idem si on fait note-off de la root (on fait note-off sur toute la liste)
+"""
+
+				if noteOn:
 					chord.setRootNote (value)										# set chord's root note
+					msgOutList = chord.getMidiList (60)								# get all the midi commands to be sent to synthetizer (eg. reaper)
+						print (msgOutList)
+						for msg in msgOutList:
+							messageOut = mido.Message ('note_on', note = msg, velocity = 127)
+							print(f'Sending {messageOut}')
+							multi_send (outPorts, messageOut)
 
-					msgDisplayList = control.liteRootNote (value)					# lite new root note
-					for msg in msgDisplayList:
-						multi_send (displayPorts, msg)
-					
+				elif:
+					msgOutList = chord.getMidiList (60)								# get all the midi commands to be sent to synthetizer (eg. reaper)
+						print (msgOutList)
+						for msg in msgOutList:
+							messageOut = mido.Message ('note_on', note = msg, velocity = 127)
+							print(f'Sending {messageOut}')
+							multi_send (outPorts, messageOut)
+				
+			except KeyError:
+
+				# check if chord type
+				try:
+					value = control.padType [note]								# get chord type: maj, min, dim, sus
+					chord.typeToChord (value, noteOn)								# change the chord type
 				except KeyError:
-
-					# check if chord type
+					
+					# check if chord attribute
 					try:
-						value = control.padType [note]								# get chord type: maj, min, dim, sus
-						lite = chord.typeToChord (value)							# change the chord type
-						if lite != value:
-							msgDisplayList = control.unliteType (lite)				# previous chord type pad shall be unlit
-							for msg in msgDisplayList:
-								multi_send (displayPorts, msg)
-							msgDisplayList = control.liteType (value)				# new chord type pad shall be lit
-							for msg in msgDisplayList:
-								multi_send (displayPorts, msg)
+						value = control.padAttribute [note]						# get chord attribute: min7, maj7, add9, etc
+						chord.attributeToChord (value, noteOn)					# add the chord attribute to the list of attributes
 					except KeyError:
 					
-						# check if chord attribute
+						# check if action
 						try:
-							value = control.padAttribute [note]							# get chord attribute: min7, maj7, add9, etc
-							lite = chord.attributeToChord (value)						# add/remove the chord attribute to/from the list of attributes
-							if lite:
-								msgDisplayList = control.liteAttribute (value)			# chord attribute pad shall be lit
-								for msg in msgDisplayList:
-									multi_send (displayPorts, msg)
-							else:
-								msgDisplayList = control.unliteAttribute (value)		# chord attribute pad shall be unlit
-								for msg in msgDisplayList:
-									multi_send (displayPorts, msg)
-						except KeyError:
-					
-							# check if action
-							try:
-								value = control.padAction [note]
-								if value == 'send':
-									msgOutList = chord.getMidiList (60)		# get all the midi commands to be sent to synthetizer (eg. reaper)
-									print (msgOutList)
-									for msg in msgOutList:
-										messageOut = mido.Message ('note_on', note = msg, velocity = 127)
-										print(f'Sending {messageOut}')
-										multi_send (outPorts, messageOut)
-								elif value == 'display':
+							value = control.padAction [note]
+							if noteOn:
+								if value == 'display':
 									chord.display ()
 								else:
 									pass
-							except KeyError:
-								pass
+						except KeyError:
+							pass
 
 except KeyboardInterrupt:
 	pass
 
 
 """
-
-
+	msgDisplayList = control.liteAttribute (value)		# chord attribute pad shall be lit
+	for msg in msgDisplayList:
+		multi_send (displayPorts, msg)
 
 
 TO DO:
@@ -635,11 +635,11 @@ implement led on launchpad
 implement chord actions that are switchable on/off
 
 HERE
-4- pressing the same type a second time clears the type (single note mode again)
+X4- pressing the same type a second time clears the type (single note mode again)
 1- press note sends chord (or note) to midi output
 2- ability to play a single note, not necessarily a chord
-3- do not play attribute if type is empty
-4b- no need to light the pads when press on-off
+X3- do not play attribute if type is empty
+X4b- no need to light the pads when press on-off
 4c- manage note-offs (stop sound)
 
 5- refactor bass chord class
