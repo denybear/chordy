@@ -114,19 +114,21 @@ class Chord:
 
 	def __init__(self):
 		self.chordField = 0			# 24-bit field containing the notes that are part of the chord
-		self.rootNote = 0
+		self.rootNote = ''
 		self.chordType = ''			# either dim, maj, min, sus (exclusively)
 		self.chordAttributes = []	# either 6, min7, maj7, 9 (can be combined)
 
 	def setRootNote (self, note):
 		if note in self.notes:
-			self.rootNote = self.notes.index (note)
+			self.rootNote = note
 			self.setRoot ()
+		elif note == '':
+			self.rootNote = note
 		else:
 			raise TypeError('note must be a note')
 
 	def getRootNote (self):
-		return self.notes [self.rootNote]
+		return self.rootNote
 
 	def setRoot (self):
 		self.chordField |= 0b100000000000000000000000
@@ -221,11 +223,11 @@ class Chord:
 		#                       mM     mM     1   3
 
 	def display (self):
-		print ('Note:' + self.notes [self.rootNote] + ' ' + str (self.rootNote).zfill(2))
+		print ('Note:' + self.rootNote)
 		print ('Chord:' + format (self.chordField, '24b'))
 		print ('      R 2334 5 677R 9  1   1')
 		print ('         mM     mM     1   3')
-		print (self.chordType)
+		print ('Chord type:' + str (self.chordType))
 		print (self.chordAttributes)
 
 
@@ -272,82 +274,39 @@ class Chord:
 
 	def typeToChord (self, typ, addition):					# set or reset type of the chord; returns True if type of chord is empty (reset) 
 		previous = self.chordType
-		typeEmpty = True
 		if addition:										# add type
 			self.chordType = typ
 		else:												# remove type, only if it was the active type
 			if (typ == previous):
 				self.chordType = ''
-				typeEmpty = False
 
 		self.buildChordField ()
-		return typeEmpty
 
 
-	def getMidiList (self, voicing):						# build a list of midi notes based on the chord to be played
+	def getMidiList (self, voicing):								# build a list of midi notes based on the chord to be played
 		lst = []
+		if self.rootNote == '':										# first make sure we have a root note
+			return []
 		startVoicing = voicing % 12
 		endVoicing = startVoicing + 11
+		voicing = ((int) (voicing / 12)) * 12						# voicing to be multiple of 12
 		
 		ch = self.chordField
 		index = 0
-		root = 0
 		
 		# go through chord and retrieve all the notes to be played; C=0, C#=1, etc
 		while ch > 0:
 			if ((ch & 0b100000000000000000000000) != 0):			# test MSB
-				elt = self.rootNote + index							# note to be played (C being 0)
+				elt = self.notes.index (self.rootNote)  +  index	# note to be played (C being 0)
 
 				# now, make sure the chord is in the voicing
 				if elt < startVoicing:
 					elt += 12
 				if elt > endVoicing:
 					elt -=12
-				if elt not in range (startVoicing, endVoicing):		# this should never happen, except for add9, add11 and add13
+				if elt not in range (startVoicing, (endVoicing + 1)):		# this should never happen, except for add9, add11 and add13
 					print ('Warning: index ' + str (index) + ' out of voicing range')
-					
-				elt = elt + voicing									# add to final voicing: this is the "note" in the midi message
-
-				if (elt > 127):										# final test to make sure we are within midi range²
-					elt -= 12
-				if (elt < 0):										# final test to make sure we are within midi range²
-					elt += 12
-
-				lst.append (elt)
-
-			ch = ch & 0b011111111111111111111111					# shift to next degree
-			ch = ch << 1
-			index += 1
-
-		return lst													# list of all chords to be played, in line with voicing
-
-
-# Bass Chord class inherits from Chord class
-class BassChord (Chord):
-
-	def getMidiList (self, voicing):
-		lst = []
-		startVoicing = voicing % 12
-		endVoicing = startVoicing + 11
-		
-		ch = self.chordField
-		ch = ch & 0b100000110000100000000000						# For bass chords, leave root, b5, 5 and octave (12th) only
-		index = 0
-		root = 0
-		
-		# go through chord and retrieve all the notes to be played; C=0, C#=1, etc
-		while ch > 0:
-			if ((ch & 0b100000000000000000000000) != 0):			# test MSB
-				elt = self.rootNote + index								# note to be played (C being 0)
-
-				# now, make sure the chord is in the voicing
-				if elt < startVoicing:
-					elt += 12
-				if elt > endVoicing:
-					elt -=12
-				if elt not in range (startVoicing, endVoicing):		# this should never happen, except for add9, add11 and add13
-					print ('Warning: index ' + str (index) + ' out of voicing range')
-					
+				
 				elt = elt + voicing									# add to final voicing: this is the "note" in the midi message
 
 				if (elt > 127):										# final test to make sure we are within midi range²
@@ -518,6 +477,10 @@ msgDisplayList = control.clear ()
 for msg in msgDisplayList:
 	multi_send (displayPorts, msg)
 
+msgDisplayList = control.clearType ()
+for msg in msgDisplayList:
+	multi_send (displayPorts, msg)
+
 msgDisplayList = control.clearAttribute ()
 for msg in msgDisplayList:
 	multi_send (displayPorts, msg)
@@ -558,49 +521,38 @@ try:
 			if bbt.hasBarChanged:
 				bbt.display ()
 
-		if (messageIn.type in ('note_on', 'note_off')):								# note on events from keyboard
+		if (messageIn.type in ('note_on', 'note_off')):							# note on events from keyboard
 			noteOn = False
 			if (messageIn.type == 'note_on') and (messageIn.velocity != 0):
 				noteOn = True
 
-			print(f'Received {messageIn}')
 			note = messageIn.note
+			playNotes = False
 
 			# check if root note
 			try:
-				value = control.padRootNote [note]								# get note: C, C#, etc		
-
-"""
-il faudrait une liste des notes actuellement on (en train d'être jouées)
-en resultat de getmidilist, on a les notes à jouer
-Xil faut faire note-off sur les notes de liste et qui ne sont pas dans getmidilist
-
-idem si on change de voicing
-Xidem si on change d'attribute
-Xidem si on change de type d'accord (si plus de type d'accord, on ne joue rien ou juste la root selon si la touche d'accord est jouée)
-Xidem si on fait note-off de la root (on fait note-off sur toute la liste)
-"""
+				value = control.padRootNote [note]								# get note: C, C#, etc
 
 				if noteOn:														# NOTE ON
 					# we shall : stop all notes currently playing, then play chord notes, then replace notes currently playing with chord notes
 					chord.setRootNote (value)									# set chord's root note
 					notesToPlay = chord.getMidiList (chordVoicing)				# get all the midi commands to be sent to synthetizer (eg. reaper)
+					playNotes = True
 
-				elif:															# NOTE OFF
+				else:															# NOTE OFF
 					current = chord.getRootNote ()
 					if current == value:										# released key is the root note: all notes should be off
 						# we shall : stop all notes currently playing, no new notes to be played
+						chord.setRootNote ('')									# set chord's root note to none
 						notesToPlay = []
+						playNotes = True
 				
 			except KeyError:
 
 				# check if chord type
 				try:
 					value = control.padType [note]								# get chord type: maj, min, dim, sus
-					# we shall : stop all notes currently playing, then replace notes currently playing with new chord notes, then play chord notes
-					if chord.typeToChord (value, noteOn):						# change the chord type	(remove previous type)
-						# nomore chord type: we shall : stop all notes currently playing, no new notes to be played
-						notesToPlay = []					
+					chord.typeToChord (value, noteOn)
 
 				except KeyError:
 					
@@ -621,26 +573,31 @@ Xidem si on fait note-off de la root (on fait note-off sur toute la liste)
 								elif value == 'voicing+':
 									if chordVoicing < 115:						# 127 - 12 = 115
 										chordVoicing += 1
+										notesToPlay = chord.getMidiList (chordVoicing)			# get all the midi commands to be sent to synthetizer (eg. reaper)
+										playNotes = True
 								elif value == 'voicing-':
 									if chordVoicing > 0:
 										chordVoicing -= 1								
+										notesToPlay = chord.getMidiList (chordVoicing)			# get all the midi commands to be sent to synthetizer (eg. reaper)
+										playNotes = True
 								else:
 									pass
 						except KeyError:
 							pass
 
-					# we stop all notes currently playing
-					for msg in notesPlaying:
-						messageOut = mido.Message ('note_off', note = msg, velocity = 0)
-						print(f'Sending {messageOut}')
-						multi_send (outPorts, messageOut)
+			if playNotes:
+				# we stop all notes currently playing
+				for msg in notesPlaying:
+					messageOut = mido.Message ('note_off', note = msg, velocity = 0)
+					print(f'Sending {messageOut}')
+					multi_send (outPorts, messageOut)
 
-					# we play chord notes; and we replace notes currently playing with chord notes
-					for msg in notesToPlay:
-						messageOut = mido.Message ('note_on', note = msg, velocity = 127)
-						print(f'Sending {messageOut}')
-						multi_send (outPorts, messageOut)
-					notesPlaying = notesToPlay.copy ()
+				# we play chord notes; and we replace notes currently playing with chord notes
+				for msg in notesToPlay:
+					messageOut = mido.Message ('note_on', note = msg, velocity = 127)
+					print(f'Sending {messageOut}')
+					multi_send (outPorts, messageOut)
+				notesPlaying = notesToPlay.copy ()
 
 
 except KeyboardInterrupt:
@@ -648,29 +605,11 @@ except KeyboardInterrupt:
 
 
 """
-	msgDisplayList = control.liteAttribute (value)		# chord attribute pad shall be lit
-	for msg in msgDisplayList:
-		multi_send (displayPorts, msg)
-
 
 TO DO:
-assign midi numbers to actions, notes, etc
-(we can implement a "chord" class to build chord)
-build chord based on actions
-implement voicing
-play chord
-implement led on launchpad
-implement chord actions that are switchable on/off
-
-HERE
-X4- pressing the same type a second time clears the type (single note mode again)
-1- press note sends chord (or note) to midi output
-2- ability to play a single note, not necessarily a chord
-X3- do not play attribute if type is empty
-X4b- no need to light the pads when press on-off
-4c- manage note-offs (stop sound)
-
-5- refactor bass chord class
+implement input keys instead of midi
+implement midi clock internal
+bass chord class
 implement rhythm library
 implement bass voicing
 """
