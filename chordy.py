@@ -270,15 +270,18 @@ class Chord:
 		self.buildChordField ()
 
 
-	def typeToChord (self, typ, addition):					# set type of the chord
+	def typeToChord (self, typ, addition):					# set or reset type of the chord; returns True if type of chord is empty (reset) 
 		previous = self.chordType
+		typeEmpty = True
 		if addition:										# add type
 			self.chordType = typ
-		else:												# remove type
-			self.chordType = ''
+		else:												# remove type, only if it was the active type
+			if (typ == previous):
+				self.chordType = ''
+				typeEmpty = False
 
 		self.buildChordField ()
-		return previous										# return previous chord type
+		return typeEmpty
 
 
 	def getMidiList (self, voicing):						# build a list of midi notes based on the chord to be played
@@ -381,7 +384,9 @@ class NovationLaunchpad:
 	}
 
 	padAction = {
-		0x08:'display'
+		0x08:'display',
+		0x18:'voicing+',
+		0x28:'voicing-'
 	}
 
 	# colors of çthe pads
@@ -478,6 +483,8 @@ class NovationLaunchpad:
 bbt = BBT ()
 chord = Chord ()
 control = NovationLaunchpad ()
+chordVoicing = 60
+bassVoicing = 40
 
 
 # define and open ports
@@ -486,6 +493,7 @@ control = NovationLaunchpad ()
 inPorts = []
 outPorts = []
 displayPorts = []
+notesPlaying = []
 
 names = mido.get_input_names()
 for name in names:
@@ -557,7 +565,7 @@ try:
 
 			print(f'Received {messageIn}')
 			note = messageIn.note
-				
+
 			# check if root note
 			try:
 				value = control.padRootNote [note]								# get note: C, C#, etc		
@@ -565,43 +573,43 @@ try:
 """
 il faudrait une liste des notes actuellement on (en train d'être jouées)
 en resultat de getmidilist, on a les notes à jouer
-il faut faire note-off sur les notes de liste et qui ne sont pas dans getmidilist
+Xil faut faire note-off sur les notes de liste et qui ne sont pas dans getmidilist
 
 idem si on change de voicing
-idem si on change d'attribute
-idem si on change de type d'accord (si plus de type d'accord, on ne joue rien ou juste la root selon si la touche d'accord est jouée)
-idem si on fait note-off de la root (on fait note-off sur toute la liste)
+Xidem si on change d'attribute
+Xidem si on change de type d'accord (si plus de type d'accord, on ne joue rien ou juste la root selon si la touche d'accord est jouée)
+Xidem si on fait note-off de la root (on fait note-off sur toute la liste)
 """
 
-				if noteOn:
-					chord.setRootNote (value)										# set chord's root note
-					msgOutList = chord.getMidiList (60)								# get all the midi commands to be sent to synthetizer (eg. reaper)
-						print (msgOutList)
-						for msg in msgOutList:
-							messageOut = mido.Message ('note_on', note = msg, velocity = 127)
-							print(f'Sending {messageOut}')
-							multi_send (outPorts, messageOut)
+				if noteOn:														# NOTE ON
+					# we shall : stop all notes currently playing, then play chord notes, then replace notes currently playing with chord notes
+					chord.setRootNote (value)									# set chord's root note
+					notesToPlay = chord.getMidiList (chordVoicing)				# get all the midi commands to be sent to synthetizer (eg. reaper)
 
-				elif:
-					msgOutList = chord.getMidiList (60)								# get all the midi commands to be sent to synthetizer (eg. reaper)
-						print (msgOutList)
-						for msg in msgOutList:
-							messageOut = mido.Message ('note_on', note = msg, velocity = 127)
-							print(f'Sending {messageOut}')
-							multi_send (outPorts, messageOut)
+				elif:															# NOTE OFF
+					current = chord.getRootNote ()
+					if current == value:										# released key is the root note: all notes should be off
+						# we shall : stop all notes currently playing, no new notes to be played
+						notesToPlay = []
 				
 			except KeyError:
 
 				# check if chord type
 				try:
 					value = control.padType [note]								# get chord type: maj, min, dim, sus
-					chord.typeToChord (value, noteOn)								# change the chord type
+					# we shall : stop all notes currently playing, then replace notes currently playing with new chord notes, then play chord notes
+					if chord.typeToChord (value, noteOn):						# change the chord type	(remove previous type)
+						# nomore chord type: we shall : stop all notes currently playing, no new notes to be played
+						notesToPlay = []					
+
 				except KeyError:
 					
 					# check if chord attribute
 					try:
+						# we shall : stop all notes currently playing, then play chord notes, then replace notes currently playing with chord notes
 						value = control.padAttribute [note]						# get chord attribute: min7, maj7, add9, etc
 						chord.attributeToChord (value, noteOn)					# add the chord attribute to the list of attributes
+
 					except KeyError:
 					
 						# check if action
@@ -610,10 +618,30 @@ idem si on fait note-off de la root (on fait note-off sur toute la liste)
 							if noteOn:
 								if value == 'display':
 									chord.display ()
+								elif value == 'voicing+':
+									if chordVoicing < 115:						# 127 - 12 = 115
+										chordVoicing += 1
+								elif value == 'voicing-':
+									if chordVoicing > 0:
+										chordVoicing -= 1								
 								else:
 									pass
 						except KeyError:
 							pass
+
+					# we stop all notes currently playing
+					for msg in notesPlaying:
+						messageOut = mido.Message ('note_off', note = msg, velocity = 0)
+						print(f'Sending {messageOut}')
+						multi_send (outPorts, messageOut)
+
+					# we play chord notes; and we replace notes currently playing with chord notes
+					for msg in notesToPlay:
+						messageOut = mido.Message ('note_on', note = msg, velocity = 127)
+						print(f'Sending {messageOut}')
+						multi_send (outPorts, messageOut)
+					notesPlaying = notesToPlay.copy ()
+
 
 except KeyboardInterrupt:
 	pass
